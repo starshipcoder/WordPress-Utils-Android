@@ -1,68 +1,182 @@
 package org.wordpress.android.util;
 
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.text.TextUtils;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
+import org.wordpress.android.util.helpers.logfile.LogFileCleaner;
+import org.wordpress.android.util.helpers.logfile.LogFileProvider;
+import org.wordpress.android.util.helpers.logfile.LogFileWriter;
+
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
 import java.util.NoSuchElementException;
+import java.util.TimeZone;
+
+import static java.lang.String.format;
 
 /**
- * simple wrapper for Android log calls, enables recording & displaying log
+ * simple wrapper for Android log calls, enables recording and displaying log
  */
 public class AppLog {
     // T for Tag
-    public enum T {READER, EDITOR, MEDIA, NUX, API, STATS, UTILS, NOTIFS, DB, POSTS, COMMENTS, THEMES, TESTS, PROFILING,
-        SIMPERIUM, SUGGESTION, MAIN}
+    public enum T {
+        READER,
+        EDITOR,
+        MEDIA,
+        NUX,
+        API,
+        STATS,
+        UTILS,
+        NOTIFS,
+        DB,
+        POSTS,
+        PAGES,
+        COMMENTS,
+        THEMES,
+        TESTS,
+        PROFILING,
+        SIMPERIUM,
+        SUGGESTION,
+        MAIN,
+        SETTINGS,
+        PLANS,
+        PEOPLE,
+        SHARING,
+        PLUGINS,
+        ACTIVITY_LOG,
+        JETPACK_REMOTE_INSTALL,
+        SUPPORT,
+        SITE_CREATION,
+        DOMAIN_REGISTRATION,
+        FEATURE_ANNOUNCEMENT,
+        PREPUBLISHING_NUDGES
+    }
+
     public static final String TAG = "WordPress";
     public static final int HEADER_LINE_COUNT = 2;
-
     private static boolean mEnableRecording = false;
+    private static List<AppLogListener> mListeners = new ArrayList<>(0);
+    private static TimeZone mUtcTimeZone = TimeZone.getTimeZone("UTC");
 
     private AppLog() {
         throw new AssertionError();
     }
 
-    /*
-     * defaults to false, pass true to capture log so it can be displayed by AppLogViewerActivity
+    /**
+     * Capture log so it can be displayed by AppLogViewerActivity
+     * @param enable A boolean flag to capture log. Default is false, pass true to enable recording
      */
     public static void enableRecording(boolean enable) {
         mEnableRecording = enable;
     }
 
+    public static void addListener(@NonNull AppLogListener listener) {
+        mListeners.add(listener);
+    }
+
+    public static void removeListeners() {
+        mListeners.clear();
+    }
+
+    public interface AppLogListener {
+        void onLog(T tag, LogLevel logLevel, String message);
+    }
+
+    /**
+     * Add a LogFileWriter that will persist logs to disk
+     * @param context The current application context
+     * @param maxLogCount The maximum number of logs that should be stored
+     */
+     public static void enableLogFilePersistence(Context context, int maxLogCount) {
+         LogFileProvider logFileProvider = LogFileProvider.fromContext(context);
+         new LogFileCleaner(logFileProvider, maxLogCount).clean();
+
+         sLogFileWriter = new LogFileWriter(logFileProvider);
+         sLogFileWriter.write(getAppInfoHeaderText(context) + "\n");
+         sLogFileWriter.write(getDeviceInfoHeaderText(context) + "\n");
+    }
+
+    private static LogFileWriter sLogFileWriter;
+
+    /**
+     * Sends a VERBOSE log message
+     * @param tag Used to identify the source of a log message.
+     * It usually identifies the class or activity where the log call occurs.
+     * @param message The message you would like logged.
+     */
     public static void v(T tag, String message) {
         message = StringUtils.notNullStr(message);
         Log.v(TAG + "-" + tag.toString(), message);
         addEntry(tag, LogLevel.v, message);
     }
 
+    /**
+     * Sends a DEBUG log message
+     * @param tag Used to identify the source of a log message.
+     * It usually identifies the class or activity where the log call occurs.
+     * @param message The message you would like logged.
+     */
     public static void d(T tag, String message) {
         message = StringUtils.notNullStr(message);
         Log.d(TAG + "-" + tag.toString(), message);
         addEntry(tag, LogLevel.d, message);
     }
 
+    /**
+     * Sends a INFO log message
+     * @param tag Used to identify the source of a log message.
+     * It usually identifies the class or activity where the log call occurs.
+     * @param message The message you would like logged.
+     */
     public static void i(T tag, String message) {
         message = StringUtils.notNullStr(message);
         Log.i(TAG + "-" + tag.toString(), message);
         addEntry(tag, LogLevel.i, message);
     }
 
+    /**
+     * Sends a WARN log message
+     * @param tag Used to identify the source of a log message.
+     * It usually identifies the class or activity where the log call occurs.
+     * @param message The message you would like logged.
+     */
     public static void w(T tag, String message) {
         message = StringUtils.notNullStr(message);
         Log.w(TAG + "-" + tag.toString(), message);
         addEntry(tag, LogLevel.w, message);
     }
 
+    /**
+     * Sends a ERROR log message
+     * @param tag Used to identify the source of a log message.
+     * It usually identifies the class or activity where the log call occurs.
+     * @param message The message you would like logged.
+     */
     public static void e(T tag, String message) {
         message = StringUtils.notNullStr(message);
         Log.e(TAG + "-" + tag.toString(), message);
         addEntry(tag, LogLevel.e, message);
     }
 
+    /**
+     * Send a ERROR log message and log the exception.
+     * @param tag Used to identify the source of a log message.
+     * It usually identifies the class or activity where the log call occurs.
+     * @param message The message you would like logged.
+     * @param tr An exception to log
+     */
     public static void e(T tag, String message, Throwable tr) {
         message = StringUtils.notNullStr(message);
         Log.e(TAG + "-" + tag.toString(), message, tr);
@@ -70,12 +184,25 @@ public class AppLog {
         addEntry(tag, LogLevel.e, "StackTrace: " + getStringStackTrace(tr));
     }
 
+    /**
+     * Sends a ERROR log message and the exception with StackTrace
+     * @param tag Used to identify the source of a log message. It usually identifies the class or activity where the
+     *           log call occurs.
+     * @param tr An exception to log to get StackTrace
+     */
     public static void e(T tag, Throwable tr) {
         Log.e(TAG + "-" + tag.toString(), tr.getMessage(), tr);
         addEntry(tag, LogLevel.e, tr.getMessage());
         addEntry(tag, LogLevel.e, "StackTrace: " + getStringStackTrace(tr));
     }
 
+    /**
+     * Sends a ERROR log message
+     * @param tag Used to identify the source of a log message. It usually identifies the class or activity where the
+     *           log call occurs.
+     * @param volleyErrorMsg
+     * @param statusCode
+     */
     public static void e(T tag, String volleyErrorMsg, int statusCode) {
         if (TextUtils.isEmpty(volleyErrorMsg)) {
             return;
@@ -94,65 +221,69 @@ public class AppLog {
 
     private static final int MAX_ENTRIES = 99;
 
-    private enum LogLevel {
+    public enum LogLevel {
         v, d, i, w, e;
-        private String toHtmlColor() {
-            switch(this) {
-                case v:
-                    return "grey";
-                case i:
-                    return "black";
-                case w:
-                    return "purple";
-                case e:
-                    return "red";
-                case d:
-                default:
-                    return "teal";
-            }
-        }
     }
 
     private static class LogEntry {
-        LogLevel mLogLevel;
-        String mLogText;
-        T mLogTag;
+        final LogLevel mLogLevel;
+        final String mLogText;
+        final java.util.Date mDate;
+        final T mLogTag;
 
-        public LogEntry(LogLevel logLevel, String logText, T logTag) {
+        LogEntry(LogLevel logLevel, String logText, T logTag) {
             mLogLevel = logLevel;
-            mLogText = logText;
-            if (mLogText == null) {
+            mDate = new Date();
+            if (logText == null) {
                 mLogText = "null";
+            } else {
+                mLogText = logText;
             }
             mLogTag = logTag;
         }
 
+        private String formatLogDate() {
+            SimpleDateFormat sdf = new SimpleDateFormat("MMM-dd kk:mm", Locale.US);
+            sdf.setTimeZone(mUtcTimeZone);
+            return sdf.format(mDate);
+        }
+
         private String toHtml() {
             StringBuilder sb = new StringBuilder();
-            sb.append("<font color=\"");
-            sb.append(mLogLevel.toHtmlColor());
-            sb.append("\">");
             sb.append("[");
-            sb.append(mLogTag.name());
-            sb.append("] ");
+            sb.append(formatLogDate()).append(" ");
+            sb.append(mLogTag.name()).append(" ");
             sb.append(mLogLevel.name());
-            sb.append(": ");
+            sb.append("] ");
             sb.append(TextUtils.htmlEncode(mLogText).replace("\n", "<br />"));
-            sb.append("</font>");
             return sb.toString();
+        }
+
+        @Override
+        public @NonNull String toString() {
+            return "["
+            + formatLogDate()
+            + " "
+            + mLogTag.name()
+            + "] "
+            + mLogText
+            + "\n";
         }
     }
 
     private static class LogEntryList extends ArrayList<LogEntry> {
         private synchronized boolean addEntry(LogEntry entry) {
-            if (size() >= MAX_ENTRIES)
+            if (size() >= MAX_ENTRIES) {
                 removeFirstEntry();
+            }
             return add(entry);
         }
+
         private void removeFirstEntry() {
             Iterator<LogEntry> it = iterator();
-            if (!it.hasNext())
+            if (!it.hasNext()) {
                 return;
+            }
             try {
                 remove(it.next());
             } catch (NoSuchElementException e) {
@@ -164,12 +295,19 @@ public class AppLog {
     private static LogEntryList mLogEntries = new LogEntryList();
 
     private static void addEntry(T tag, LogLevel level, String text) {
-        // skip if recording is disabled (default)
-        if (!mEnableRecording) {
-            return;
+        // Call our listeners if any
+        for (AppLogListener listener : mListeners) {
+            listener.onLog(tag, level, text);
         }
-        LogEntry entry = new LogEntry(level, text, tag);
-        mLogEntries.addEntry(entry);
+        // Record entry if enabled
+        if (mEnableRecording) {
+            LogEntry entry = new LogEntry(level, text, tag);
+            mLogEntries.addEntry(entry);
+
+            if (sLogFileWriter != null) {
+                sLogFileWriter.write(entry.toString());
+            }
+        }
     }
 
     private static String getStringStackTrace(Throwable throwable) {
@@ -178,39 +316,65 @@ public class AppLog {
         return errors.toString();
     }
 
-    /*
-     * returns entire log as html for display (see AppLogViewerActivity)
+
+    private static String getAppInfoHeaderText(Context context) {
+        StringBuilder sb = new StringBuilder();
+        PackageManager packageManager = context.getPackageManager();
+        PackageInfo pkInfo = PackageUtils.getPackageInfo(context);
+
+        ApplicationInfo applicationInfo = pkInfo != null ? pkInfo.applicationInfo : null;
+        String appName;
+        if (applicationInfo != null && packageManager.getApplicationLabel(applicationInfo) != null) {
+            appName = packageManager.getApplicationLabel(applicationInfo).toString();
+        } else {
+            appName = "Unknown";
+        }
+        sb.append(appName).append(" - ").append(PackageUtils.getVersionName(context))
+          .append(" - Version code: ").append(PackageUtils.getVersionCode(context));
+        return sb.toString();
+    }
+
+    private static String getDeviceInfoHeaderText(Context context) {
+        return "Android device name: " + DeviceUtils.getInstance().getDeviceName(context);
+    }
+
+    /**
+     * Returns entire log as html for display (see AppLogViewerActivity)
+     * @param context
+     * @return Arraylist of Strings containing log messages
      */
     public static ArrayList<String> toHtmlList(Context context) {
         ArrayList<String> items = new ArrayList<String>();
 
         // add version & device info - be sure to change HEADER_LINE_COUNT if additional lines are added
-        items.add("<strong>WordPress Android version: " + PackageUtils.getVersionName(context) + "</strong>");
-        items.add("<strong>Android device name: " + DeviceUtils.getInstance().getDeviceName(context) + "</strong>");
+        items.add("<strong>" + getAppInfoHeaderText(context) + "</strong>");
+        items.add("<strong>" + getDeviceInfoHeaderText(context) + "</strong>");
 
-        Iterator<LogEntry> it = mLogEntries.iterator();
+        Iterator<LogEntry> it = new ArrayList<>(mLogEntries).iterator();
         while (it.hasNext()) {
             items.add(it.next().toHtml());
         }
         return items;
     }
 
-    /*
-     * returns entire log as plain text
+    /**
+     * Converts the entire log to plain text
+     * @param context
+     * @return The log as plain text
      */
-    public static String toPlainText(Context context) {
+    public static synchronized String toPlainText(Context context) {
         StringBuilder sb = new StringBuilder();
 
         // add version & device info
-        sb.append("WordPress Android version: " + PackageUtils.getVersionName(context)).append("\n")
-          .append("Android device name: " + DeviceUtils.getInstance().getDeviceName(context)).append("\n\n");
+        sb.append(getAppInfoHeaderText(context)).append("\n")
+          .append(getDeviceInfoHeaderText(context)).append("\n\n");
 
-        Iterator<LogEntry> it = mLogEntries.iterator();
+        Iterator<LogEntry> it = new ArrayList<>(mLogEntries).iterator();
         int lineNum = 1;
         while (it.hasNext()) {
-              sb.append(String.format("%02d - ", lineNum))
-              .append(it.next().mLogText)
-              .append("\n");
+            LogEntry entry = it.next();
+            sb.append(format(Locale.US, "%02d - ", lineNum))
+              .append(entry.toString());
             lineNum++;
         }
         return sb.toString();

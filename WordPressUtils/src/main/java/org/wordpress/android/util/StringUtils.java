@@ -1,7 +1,9 @@
 package org.wordpress.android.util;
 
-import android.text.Html;
+import android.content.Context;
 import android.text.TextUtils;
+
+import androidx.annotation.StringRes;
 
 import org.wordpress.android.util.AppLog.T;
 
@@ -11,9 +13,51 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 public class StringUtils {
-    public static String[] mergeStringArrays(String array1[], String array2[]) {
+    /**
+     * Compare two Strings lexicographically
+     * Mirrors {@link org.apache.commons.lang3.StringUtils#compare(String, String)}. Use this version when there is a
+     * hint that the Apache lib might not be provided by the system.
+     * @param s1 the String to compare from
+     * @param s2 the String to compare to
+     * @return &lt; 0, 0, &gt; 0, if {@code s1} is respectively less, equal ou greater than {@code s2}
+     */
+    public static int compare(String s1, String s2) {
+        if (s1 == s2) {
+            return 0;
+        } else if (s1 == null) {
+            return -1;
+        } else if (s2 == null) {
+            return 1;
+        } else {
+            return s1.compareTo(s2);
+        }
+    }
+
+    /**
+     * Compare two Strings lexicographically, ignoring case differences.
+     * Mirrors {@link org.apache.commons.lang3.StringUtils#compareIgnoreCase(String, String)}. Use this version when
+     * there is a hint that the Apache lib might not be provided by the system.
+     * @param s1 the String to compare from
+     * @param s2 the String to compare to
+     * @return &lt; 0, 0, &gt; 0, if {@code s1} is respectively less, equal ou greater than {@code s2}
+     */
+    public static int compareIgnoreCase(final String s1, final String s2) {
+        if (s1 == s2) {
+            return 0;
+        }
+        if (s1 == null) {
+            return -1;
+        }
+        if (s2 == null) {
+            return 1;
+        }
+        return s1.compareToIgnoreCase(s2);
+    }
+
+    public static String[] mergeStringArrays(String[] array1, String[] array2) {
         if (array1 == null || array1.length == 0) {
             return array2;
         }
@@ -95,14 +139,6 @@ public class StringUtils {
         return md5;
     }
 
-    public static String unescapeHTML(String html) {
-        if (html != null) {
-            return Html.fromHtml(html).toString();
-        } else {
-            return "";
-        }
-    }
-
     /*
      * nbradbury - adapted from Html.escapeHtml(), which was added in API Level 16
      * TODO: not thoroughly tested yet, so marked as private - not sure I like the way
@@ -164,7 +200,8 @@ public class StringUtils {
 
     /*
      * capitalizes the first letter in the passed string - based on Apache commons/lang3/StringUtils
-     * http://svn.apache.org/viewvc/commons/proper/lang/trunk/src/main/java/org/apache/commons/lang3/StringUtils.java?revision=1497829&view=markup
+     * http://svn.apache.org/viewvc/commons/proper/lang/trunk/src/main/java/org/apache/commons/lang3/StringUtils
+     * .java?revision=1497829&view=markup
      */
     public static String capitalize(final String str) {
         int strLen;
@@ -185,7 +222,7 @@ public class StringUtils {
             return str;
         }
 
-        return str.substring(0, str.length() -1);
+        return str.substring(0, str.length() - 1);
     }
 
     /*
@@ -197,33 +234,15 @@ public class StringUtils {
         return "http://i0.wp.com/" + imageUrl + "?w=" + size;
     }
 
-    public static String getHost(String url) {
-        if (TextUtils.isEmpty(url)) {
-            return "";
-        }
-
-        int doubleslash = url.indexOf("//");
-        if (doubleslash == -1) {
-            doubleslash = 0;
-        } else {
-            doubleslash += 2;
-        }
-
-        int end = url.indexOf('/', doubleslash);
-        end = (end >= 0) ? end : url.length();
-
-        return url.substring(doubleslash, end);
-    }
-
     public static String replaceUnicodeSurrogateBlocksWithHTMLEntities(final String inputString) {
         final int length = inputString.length();
         StringBuilder out = new StringBuilder(); // Used to hold the output.
-        for (int offset = 0; offset < length; ) {
+        for (int offset = 0; offset < length;) {
             final int codepoint = inputString.codePointAt(offset);
             final char current = inputString.charAt(offset);
             if (Character.isHighSurrogate(current) || Character.isLowSurrogate(current)) {
-                if (EmoticonsUtils.wpSmiliesCodePointToText.get(codepoint) != null) {
-                    out.append(EmoticonsUtils.wpSmiliesCodePointToText.get(codepoint));
+                if (EmoticonsUtils.WP_SMILIES_CODE_POINT_TO_TEXT.get(codepoint) != null) {
+                    out.append(EmoticonsUtils.WP_SMILIES_CODE_POINT_TO_TEXT.get(codepoint));
                 } else {
                     final String htmlEscapedChar = "&#x" + Integer.toHexString(codepoint) + ";";
                     out.append(htmlEscapedChar);
@@ -234,6 +253,27 @@ public class StringUtils {
             offset += Character.charCount(codepoint);
         }
         return out.toString();
+    }
+
+    /**
+     * Used to convert a language code ([lc]_[rc] where lc is language code (en, fr, es, etc...)
+     * and rc is region code (zh-CN, zh-HK, zh-TW, etc...) to a displayable string with the languages
+     * name.
+     *
+     * The input string must be between 2 and 6 characters, inclusive. An empty string is returned
+     * if that is not the case.
+     *
+     * If the input string is recognized by {@link Locale} the result of this method is the given
+     *
+     * @return non-null
+     */
+    public static String getLanguageString(String languagueCode, Locale displayLocale) {
+        if (languagueCode == null || languagueCode.length() < 2 || languagueCode.length() > 6) {
+            return "";
+        }
+
+        Locale languageLocale = new Locale(languagueCode.substring(0, 2));
+        return languageLocale.getDisplayLanguage(displayLocale) + languagueCode.substring(2);
     }
 
     /**
@@ -256,12 +296,12 @@ public class StringUtils {
         }
         for (int i = 0; i < in.length(); i++) {
             current = in.charAt(i); // NOTE: No IndexOutOfBoundsException caught here; it should not happen.
-            if ((current == 0x9) ||
-                (current == 0xA) ||
-                (current == 0xD) ||
-                ((current >= 0x20) && (current <= 0xD7FF)) ||
-                ((current >= 0xE000) && (current <= 0xFFFD)) ||
-                ((current >= 0x10000) && (current <= 0x10FFFF))) {
+            if ((current == 0x9)
+                || (current == 0xA)
+                || (current == 0xD)
+                || ((current >= 0x20) && (current <= 0xD7FF))
+                || ((current >= 0xE000) && (current <= 0xFFFD))
+                || ((current >= 0x10000) && (current <= 0x10FFFF))) {
                 out.append(current);
             }
         }
@@ -274,9 +314,11 @@ public class StringUtils {
     public static int stringToInt(String s) {
         return stringToInt(s, 0);
     }
+
     public static int stringToInt(String s, int defaultValue) {
-        if (s == null)
+        if (s == null) {
             return defaultValue;
+        }
         try {
             return Integer.valueOf(s);
         } catch (NumberFormatException e) {
@@ -287,13 +329,35 @@ public class StringUtils {
     public static long stringToLong(String s) {
         return stringToLong(s, 0L);
     }
+
     public static long stringToLong(String s, long defaultValue) {
-        if (s == null)
+        if (s == null) {
             return defaultValue;
+        }
         try {
             return Long.valueOf(s);
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    /**
+     * Formats the string for the given quantity, using the given arguments.
+     * We need this because our translation platform doesn't support Android plurals.
+     *
+     * @param zero The desired string identifier to get when quantity is exactly 0
+     * @param one The desired string identifier to get when quantity is exactly 1
+     * @param other The desired string identifier to get when quantity is not (0 or 1)
+     * @param quantity The number used to get the correct string
+     */
+    public static String getQuantityString(Context context, @StringRes int zero, @StringRes int one,
+                                           @StringRes int other, int quantity) {
+        if (quantity == 0) {
+            return context.getString(zero);
+        }
+        if (quantity == 1) {
+            return context.getString(one);
+        }
+        return String.format(context.getString(other), quantity);
     }
 }

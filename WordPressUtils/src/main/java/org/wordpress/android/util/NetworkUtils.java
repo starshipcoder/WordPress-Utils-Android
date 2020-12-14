@@ -1,5 +1,6 @@
 package org.wordpress.android.util;
 
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.net.ConnectivityManager;
@@ -11,14 +12,15 @@ import android.provider.Settings;
 /**
  * requires android.permission.ACCESS_NETWORK_STATE
  */
-
+@SuppressLint("MissingPermission")
 public class NetworkUtils {
     public static final int TYPE_UNKNOWN = -1;
 
     /**
      * returns information on the active network connection
      */
-    private static NetworkInfo getActiveNetworkInfo(Context context) {
+    @SuppressLint("MissingPermission")
+    public static NetworkInfo getActiveNetworkInfo(Context context) {
         if (context == null) {
             return null;
         }
@@ -55,6 +57,15 @@ public class NetworkUtils {
      */
     public static boolean isWiFiConnected(Context context) {
         return (getActiveNetworkType(context) == ConnectivityManager.TYPE_WIFI);
+    }
+
+    /**
+     * returns true if the user is connected with the mobile data connection
+     */
+    public static boolean isMobileConnected(Context context) {
+        int networkType = getActiveNetworkType(context);
+        return (networkType == ConnectivityManager.TYPE_MOBILE
+                || networkType == ConnectivityManager.TYPE_MOBILE_DUN);
     }
 
     /**
